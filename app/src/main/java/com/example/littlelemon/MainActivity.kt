@@ -11,8 +11,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.Button
+import androidx.compose.material.Icon
+import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -22,8 +30,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.room.Room
 import com.example.littlelemon.ui.theme.LittleLemonTheme
 import io.ktor.client.HttpClient
+import io.ktor.client.call.body
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
 import io.ktor.http.ContentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
@@ -44,11 +54,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             LittleLemonTheme {
-                // add databaseMenuItems code here
-
-                // add orderMenuItems variable here
-
-                // add menuItems variable here
+                val databaseMenuItems = database.menuItemDao().getAll().observeAsState(emptyList())
+                val orderMenuItems = remember { mutableStateOf(false) }
+                var menuItems = when (orderMenuItems.value) {
+                    true -> databaseMenuItems.value.sortedBy { it.title }
+                    false -> databaseMenuItems.value
+                }
 
                 Column(
                     modifier = Modifier
@@ -60,27 +71,47 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(50.dp)
                     )
 
-                    // add Button code here
+                    Button(onClick = { orderMenuItems.value = true }) {
+                        Text(text = "Tap to Order By Name")
+                    }
 
-                    // add searchPhrase variable here
+                    val searchPhrase = remember { mutableStateOf("") }
 
-                    // Add OutlinedTextField
+                    OutlinedTextField(
+                        value = searchPhrase.value,
+                        label = { Text(text = "Search") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 50.dp, end = 50.dp),
+                        onValueChange = { searchPhrase.value = it },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search Icon"
+                            )
+                        }
+                    )
 
-                    // add is not empty check here
+                    if (searchPhrase.value.isNotEmpty()) {
+                        menuItems = menuItems.filter {
+                            it.title.contains(searchPhrase.value, ignoreCase = true)
+                        }
+                    }
+                    MenuItemsList(items = menuItems)
                 }
             }
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            if (database.menuItemDao().isEmpty()) {
-                // add code here
-            }
+            if (database.menuItemDao().isEmpty()) saveMenuToDatabase(fetchMenu())
         }
     }
 
     private suspend fun fetchMenu(): List<MenuItemNetwork> {
-        TODO("Retrieve data")
-        // data URL: https://raw.githubusercontent.com/Meta-Mobile-Developer-PC/Working-With-Data-API/main/littleLemonSimpleMenu.json
+        val response: MenuNetwork = httpClient
+            .get("https://raw.githubusercontent.com/Meta-Mobile-Developer-PC/Working-With-Data-API/main/littleLemonSimpleMenu.json")
+            .body()
+        return response.menu
     }
 
     private fun saveMenuToDatabase(menuItemsNetwork: List<MenuItemNetwork>) {
